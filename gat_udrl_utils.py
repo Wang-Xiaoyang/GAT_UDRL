@@ -11,29 +11,31 @@ import pandas as pd
 
 # one layer GAT
 class GAT(nn.Module):
-    def __init__(self, in_feats, out_feats_gat, num_heads, h_feats, out_feats):
+    def __init__(self, in_feats, out_feats_gat, num_heads, h_feats, num_classes):
         super(GAT, self).__init__()
-        self.gat1 = GATConv(in_feats, out_feats_gat, num_heads, activation=nn.Sigmoid)
+        self.gat1 = GATConv(in_feats, out_feats_gat, num_heads)
         # encode reward-to-go
         self.fc1 = nn.Linear(1, h_feats)
         # predict action
-        self.fc2 = nn.Linear((out_feats_gat*num_heads+h_feats), out_feats)
+        self.fc2 = nn.Linear((out_feats_gat*num_heads+h_feats), num_classes)
     
     def forward(self, g, in_feat, reward_to_go, cur_node):
         # graph goes through GAT
         h = self.gat1(g, in_feat)
+        h = torch.sigmoid(h)
         # concatenate multiple heads
         h = h.view(g.num_nodes(),-1)
+        h = h.reshape(cur_node.size()[0], cur_node.size()[1], h.size()[-1])
         # select the particular node using the one-hot vector
-        h = torch.sum(torch.multiply(h, cur_node), dim=1)
+        h = torch.matmul(cur_node.unsqueeze(dim=1), h)
+        h = h.squeeze(dim=1)
         # encode reward_to_go
-        h_r = self.fc1(reward_to_go)
+        h_r = self.fc1(reward_to_go.unsqueeze(dim=1))
         h_r = F.relu(h_r)
-        h = torch.cat((h, h_r))
+        h = torch.cat((h, h_r), dim=1)
         # prediction layer
-        h = F.softmax(self.fc2(h))
+        h = self.fc2(h)
         return h
-
 
 """
 Data Loader.
@@ -44,7 +46,7 @@ class GAT_Dataset(DGLDataset):
 
     def process(self):
         edges = pd.read_csv('./random/graph_structure.csv')
-        properties = pd.read_csv('./random/sequential_samples.csv')
+        properties = pd.read_pickle('./random/sequential_samples.pkl')
         self.graphs = []
         self.labels = []
         self.returns = []
@@ -53,42 +55,28 @@ class GAT_Dataset(DGLDataset):
         num_nodes = edges['num_nodes'][0]
         src = eval(edges['src_nodes'][0])
         dst = eval(edges['dst_nodes'][0])
-        g = dgl.graph((src, dst), num_nodes=num_nodes)
-        g.ndata['feat'] = 
-        self.graphs.append(g)
-        self.labels.append(label)
-
-        # Create a graph for each graph ID from the edges table.
-        # First process the properties table into two dictionaries with graph IDs as keys.
-        # The label and number of nodes are values.
-        label_dict = {}
-        num_nodes_dict = {}
-        for _, row in properties.iterrows():
-            label_dict[row['graph_id']] = row['label']
-            num_nodes_dict[row['graph_id']] = row['num_nodes']
-
-        # For the edges, first group the table by graph IDs.
-        edges_group = edges.groupby('graph_id')
-
-        # For each graph ID...
-        for graph_id in edges_group.groups:
-            # Find the edges as well as the number of nodes and its label.
-            edges_of_id = edges_group.get_group(graph_id)
-            src = edges_of_id['src'].to_numpy()
-            dst = edges_of_id['dst'].to_numpy()
-            num_nodes = num_nodes_dict[graph_id]
-            label = label_dict[graph_id]
-
-            # Create a graph and add it to the list of graphs and labels.
-            g = dgl.graph((src, dst), num_nodes=num_nodes)
-            self.graphs.append(g)
-            self.labels.append(label)
+        for i in range(len(properties)):
+            cur_row = properties.loc[i]
+            feats_multi, cur_nodes_multi = cur_row['feats'], cur_row['cur_node_one_hot']
+            assert len(feats_multi) == len(cur_nodes_multi)
+            labels_multi, returns_multi = cur_row['labels'], cur_row['returns']
+            assert len(labels_multi) == len(returns_multi)
+            assert len(feats_multi) == len(labels_multi)
+            for j in range(len(labels_multi)):
+                g = dgl.graph((src, dst), num_nodes=num_nodes)
+                g = dgl.add_self_loop(g)
+                g.ndata['feat'] = torch.from_numpy(feats_multi[j])
+                self.graphs.append(g)
+                self.labels.append(labels_multi[j])
+                self.returns.append(returns_multi[j])
+                self.cur_items.append(cur_nodes_multi[j])
 
         # Convert the label list to tensor for saving.
         self.labels = torch.LongTensor(self.labels)
+        self.returns = torch.LongTensor(self.returns)
 
     def __getitem__(self, i):
-        return self.graphs[i], self.labels[i]
+        return self.graphs[i], self.labels[i], self.returns[i], self.cur_items[i]
 
     def __len__(self):
         return len(self.graphs)

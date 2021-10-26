@@ -61,25 +61,30 @@ for idx in range(data_config.N_Episodes):
     env.reset(n_nodes=[env_config.N_RUs, env_config.N_DUs])
     # ndata in graph
     feats = get_node_feat(env)
+    nodes_actions = np.zeros((n_nodes, env.action_space.n))
+    feats_with_actions = []
     actions = []
     rewards = []
     cur_nodes = []
     while not done:
+        feats_with_actions.append(np.concatenate((feats, nodes_actions), axis=1))
         # a one-hot vector representing the current node, corresponding with labels
         current_node = np.zeros(env.n_nodes[0])
         current_node[env.cur_item] = 1
         a = env.action_space.sample()
-        _, r, done, _ = env.step(a)
+        # encode the action taken
+        nodes_actions[env.cur_item, a] = 1 
+        _, r, done, _ = env.step(a)       
         actions.append(a)
         rewards.append(r)
         cur_nodes.append(list(current_node))
     returns = reward_to_go(rewards)
-    dataset_random['feats'] = feats
+    dataset_random['feats'] = feats_with_actions
     dataset_random['cur_node_one_hot'] = cur_nodes
     dataset_random['labels'] = actions
     dataset_random['returns'] = returns
     data_pd = data_pd.append(dataset_random, ignore_index=True)
 
 # save dataset
-data_pd.to_csv('./random/sequential_samples.csv')
+data_pd.to_pickle('./random/sequential_samples.pkl')
 print('Time to generate %f samples is %f' % (data_config.N_Episodes, time.time()-t_0))
