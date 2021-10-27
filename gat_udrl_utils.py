@@ -73,7 +73,7 @@ class GAT_Dataset(DGLDataset):
 
         # Convert the label list to tensor for saving.
         self.labels = torch.LongTensor(self.labels)
-        self.returns = torch.LongTensor(self.returns)
+        self.returns = torch.FloatTensor(self.returns)
 
     def __getitem__(self, i):
         return self.graphs[i], self.labels[i], self.returns[i], self.cur_items[i]
