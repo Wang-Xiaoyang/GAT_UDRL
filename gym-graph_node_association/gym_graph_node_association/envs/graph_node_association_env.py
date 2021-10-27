@@ -120,15 +120,23 @@ class GraphAssociationEnv(gym.Env):
         
         return r_a - r_l - r_c
 
-    def reset(self, n_nodes = [20, 4], mu = 3.0, std = 1.0):
+    def reset(self, n_nodes = [20, 4], mu = 3.0, std = 1.0, random_seed = None):
         self.n_nodes = n_nodes
         self.n_nodes_total = np.sum(self.n_nodes)
+        # locations of nodes
+        np.random.seed(42)
+        self.nodes_x = np.random.randint(0, 10, (self.n_nodes_total, 1))
+        self.nodes_y = np.random.randint(0, 10, (self.n_nodes_total, 1))
 
         self.mu, self.std = mu, std # most of samples should be larger than 0
-        np.random.seed()
+        if random_seed is None:
+            np.random.seed()
+        else:
+            np.random.seed(random_seed)
         self.fea = np.random.normal(loc=self.mu, scale=self.std, size=self.n_nodes[0])
         self.fea = [np.max([0, i]) for i in self.fea] # non-negative features
 
+        self.remaining_capacity = np.ones(self.n_nodes[1]) * self.C # update in get_reward()
         self.cur_item = 0
         # init adjacency matrix; this is the adjacency mat in terms of node association: [type_0, type_1]
         self.adjacency_mat = np.zeros([self.n_nodes[0], self.n_nodes[1]])
