@@ -20,7 +20,7 @@ data_config = edict({'N_Episodes': 100,
                     })
 
 env_config = edict({'N_RUs':20,
-                 'N_DUs':4,
+                 'N_DUs':2,
                  })
 
 env = gym.make("gym_graph_node_association:graph_association-v0")
@@ -74,7 +74,7 @@ for idx in range(data_config.N_Episodes):
         a = env.action_space.sample()
         # encode the action taken
         nodes_actions[env.cur_item, a] = 1 
-        _, r, done, _ = env.step(a)       
+        _, r, done, _ = env.step(a)     
         actions.append(a)
         rewards.append(r)
         cur_nodes.append(list(current_node))
@@ -87,4 +87,4 @@ for idx in range(data_config.N_Episodes):
 
 # save dataset
 data_pd.to_pickle('./random/sequential_samples.pkl')
-print('Time to generate %f samples is %f' % (data_config.N_Episodes, time.time()-t_0))
+print('Time to generate %d samples is %f' % (data_config.N_Episodes, time.time()-t_0))
