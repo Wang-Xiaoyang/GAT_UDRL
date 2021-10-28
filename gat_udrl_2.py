@@ -1,5 +1,6 @@
 import numpy as np
 import dgl
+from numpy import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,6 +9,7 @@ from torch.utils.data.sampler import Sampler, SubsetRandomSampler
 import dgl.data
 from dgl.dataloading import GraphDataLoader
 from gat_udrl_utils import *
+from GATModel import *
 from env_utils import *
 
 import time
@@ -20,15 +22,16 @@ wandb.init(entity="xiaoyang",
 #env config
 wandb.config.n_nodes = 20
 wandb.config.n_classes = 2
-wandb.config.model = 'GAT_UDRL_1'
+wandb.config.model = 'GAT_UDRL_2'
 
-wandb.config.n_epoches = 1000
-wandb.config.batch_size = 16
+wandb.config.n_epoches = 5000
+wandb.config.batch_size = 64
 wandb.config.learning_rate = 0.01
 wandb.config.training_set = 0.8
-wandb.config.in_feats = 3 + wandb.config.n_classes
-wandb.config.out_feats_GAT = 16
-wandb.config.out_feats_rtg_encoder = 8
+# here 3 means [value (1*1), location (x,y) (1*2)]; '1' means returns
+wandb.config.in_feats = 3 + wandb.config.n_classes*2 + 1 + wandb.config.n_classes
+wandb.config.out_feats_GAT = 8
+wandb.config.out_feats_rtg_encoder = 16
 wandb.config.num_GAT_heads = 3
 wandb.config.evaluation_eps = 10
 config = wandb.config
@@ -36,7 +39,7 @@ config = wandb.config
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 t0 = time.time()
-dataset = GAT_Dataset()
+dataset = GAT_Dataset_2()
 print('time for processing dataset with %d samples is %f' % (len(dataset), time.time() - t0))
 
 # training set and testing set
@@ -68,14 +71,12 @@ out_feats = config.n_classes # number of classes
 learning_rate = config.learning_rate
 epochs = config.n_epoches
 
-model = GAT(in_feats, out_feats_gat, num_heads, h_feats, out_feats).to(device)
+model = GAT2(in_feats, out_feats_gat, num_heads, h_feats, out_feats).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-# freeze the reward-to-go encoding layer
-model.fc1.weight.requires_grad = False
-model.fc1.bias.requires_grad = False
-
 wandb.watch(model)
+
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[500, 1000, 2000], gamma=0.5)
 
 for epoch in range(epochs):
     losses = 0
@@ -84,7 +85,8 @@ for epoch in range(epochs):
         # cur_items = torch.FloatTensor(cur_items)
         cur_items = torch.stack(cur_items, dim=1).float()
         batched_graph, labels, returns, cur_items  = batched_graph.to(device), labels.to(device), returns.to(device), cur_items.to(device)
-        pred = model(batched_graph, batched_graph.ndata['feat'].float(), returns.float(), cur_items)
+        #pred = model(batched_graph, batched_graph.ndata['feat'].float(), returns.float(), cur_items)
+        pred = model(batched_graph, batched_graph.ndata['feat_with_returns'].float(), returns.float(), cur_items)
         loss = F.cross_entropy(pred, labels)
         optimizer.zero_grad()
         loss.backward()
@@ -92,14 +94,15 @@ for epoch in range(epochs):
         losses += loss
         num_batches += 1
     
-    wandb.log({"average loss in epoches": losses/num_batches, "epoch": epoch})    
+    wandb.log({"average loss in epoches": losses/num_batches})
+    scheduler.step()    
 
 num_correct = 0
 num_tests = 0
 for batched_graph, labels, returns, cur_items in test_dataloader:
     cur_items = torch.stack(cur_items, dim=1).float()
     batched_graph, labels, returns, cur_items  = batched_graph.to(device), labels.to(device), returns.to(device), cur_items.to(device)
-    pred = model(batched_graph, batched_graph.ndata['feat'].float(), returns.float(), cur_items)
+    pred = model(batched_graph, batched_graph.ndata['feat_with_returns'].float(), returns.float(), cur_items)
     num_correct += (pred.argmax(1) == labels).sum().item()
     num_tests += len(labels)
 
@@ -107,6 +110,7 @@ wandb.log({"test accuracy": num_correct / num_tests})
 
 """
 model evaluation on env
+"""
 """
 env = gym.make("gym_graph_node_association:graph_association-v0")
 env.reset(n_nodes=[config.n_nodes, config.n_classes])
@@ -119,7 +123,8 @@ dst = eval(edges['dst_nodes'][0])
 
 for idx in range(config.evaluation_eps):
     done = False
-    env.reset(n_nodes=[config.n_nodes, config.n_classes])
+    # use known seeds in test time; compare between trained model and random model
+    env.reset(n_nodes=[config.n_nodes, config.n_classes], random_seed=idx)
     # ndata in graph
     feats = get_node_feat(env)
     nodes_actions = np.zeros((config.n_nodes, env.action_space.n))
@@ -147,13 +152,21 @@ for idx in range(config.evaluation_eps):
         returns -= r
         total_reward += r
     wandb.log({"evaluation: trained model rewards (each episode)": total_reward})
+    
+"""
 
 """
 Reference result: returns in random datasets.
 """
-properties = pd.read_pickle('./random/sequential_samples.pkl')
-rand_idx = np.random.randint(0,len(properties), size=10)
-random_reward = 0
-for idx in rand_idx:
-    random_reward += properties['returns'][idx][0]
-wandb.log({"reference - (average) reward of random agents": random_reward / 10})
+"""
+for idx in range(config.evaluation_eps):
+    done = False
+    env.reset(n_nodes=[config.n_nodes, config.n_classes], random_seed=idx)
+    reward = 0
+    while not done:
+        a = env.action_space.sample()
+        _, r, done, _ = env.step(a)
+        reward += r     
+    wandb.log({"reference - reward of random agents": reward})
+    
+"""
