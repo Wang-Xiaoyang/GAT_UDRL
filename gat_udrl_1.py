@@ -24,10 +24,8 @@ wandb.init(entity="xiaoyang",
 GAT_UDRL_1: 
 Node feature for graph: [Values, location(node), additional feature (locations of type 1 nodes), 
     action taken in for this node (for previous nodes)]
-
 To encode reward-to-go: the current reward-to-go goes through a seperate encoder ([fc1] in the network)
     Then concatenated with the output of GAT, as the input to the final action prediction layer.
-
 graph with node features [s, previous actions] --> GAT --> node embedding (for current node)
                                                                                                + --> prediction layer
 Rtg --> encoder --> rtg embedding

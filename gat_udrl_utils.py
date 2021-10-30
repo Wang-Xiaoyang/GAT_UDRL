@@ -10,6 +10,8 @@ from dgl.nn import GATConv
 import pandas as pd
 import numpy as np
 
+# node association env
+
 dir_name = 'consumption-first'
 
 """

@@ -63,7 +63,7 @@ for idx in range(data_config.N_Graphs):
                     'src_nodes': env.src,
                     'dst_nodes': env.dst,
                   }
-    graph_structure_pd = data_pd.append(graph_structure, ignore_index=True)
+    graph_structure_pd = graph_structure_pd.append(graph_structure, ignore_index=True)
 
     nx_G = env.g.to_networkx().to_undirected()
     # Kamada-Kawaii layout usually looks pretty for arbitrary graphs
