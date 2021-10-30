@@ -21,10 +21,13 @@ class GAT1(nn.Module):
         self.gat2 = GATConv(out_feats_gat*num_heads, out_feats_gat, num_heads)
         self.gat3 = GATConv(out_feats_gat*num_heads, out_feats_gat, num_heads)
         # self.gat4 = GATConv(out_feats_gat*num_heads, out_feats_gat, num_heads)
+        # self.gat5 = GATConv(out_feats_gat*num_heads, out_feats_gat, num_heads)
+        # self.gat6 = GATConv(out_feats_gat*num_heads, out_feats_gat, num_heads)
         # encode reward-to-go
         self.fc1 = nn.Linear(1, h_feats)
         # predict action
-        self.fc2 = nn.Linear((out_feats_gat*num_heads+h_feats), num_classes)
+        # self.fc2 = nn.Linear((out_feats_gat*num_heads+h_feats), num_classes)
+        self.fc2 = nn.Linear((out_feats_gat*num_heads), num_classes)
     
     def forward(self, g, in_feat, reward_to_go, cur_node):
         # graph goes through GAT
@@ -39,6 +42,12 @@ class GAT1(nn.Module):
         # h = h.view(g.num_nodes(),-1)
         # h = self.gat4(g, h)
         # h = torch.sigmoid(h)
+        # h = h.view(g.num_nodes(),-1)
+        # h = self.gat5(g, h)
+        # h = torch.sigmoid(h)
+        # h = h.view(g.num_nodes(),-1)
+        # h = self.gat6(g, h)
+        # h = torch.sigmoid(h)
         # concatenate multiple heads
         h = h.view(g.num_nodes(),-1)
         h = h.reshape(cur_node.size()[0], cur_node.size()[1], h.size()[-1])
@@ -46,9 +55,9 @@ class GAT1(nn.Module):
         h = torch.matmul(cur_node.unsqueeze(dim=1), h)
         h = h.squeeze(dim=1)
         # encode reward_to_go
-        h_r = self.fc1(reward_to_go.unsqueeze(dim=1))
-        h_r = F.relu(h_r)
-        h = torch.cat((h, h_r), dim=1)
+        # h_r = self.fc1(reward_to_go.unsqueeze(dim=1))
+        # h_r = F.relu(h_r)
+        # h = torch.cat((h, h_r), dim=1)
         # prediction layer
         h = self.fc2(h)
         return h

@@ -10,6 +10,8 @@ from dgl.nn import GATConv
 import pandas as pd
 import numpy as np
 
+dir_name = 'consumption-first'
+
 """
 Data loader for GAT_UDRL_1 model.
 """
@@ -18,8 +20,9 @@ class GAT_Dataset_1(DGLDataset):
         super().__init__(name='GAT_dataset')
 
     def process(self):
-        edges = pd.read_csv('./random/graph_structure.csv')
-        properties = pd.read_pickle('./random/sequential_samples.pkl')
+        self.dir_name = dir_name
+        edges = pd.read_csv('./' + self.dir_name + '/graph_structure.csv')
+        properties = pd.read_pickle('./' + self.dir_name + '/sequential_samples.pkl')
         self.graphs = []
         self.labels = []
         self.returns = []
@@ -62,8 +65,9 @@ class GAT_Dataset_2(DGLDataset):
         super().__init__(name='GAT_dataset')
 
     def process(self):
-        edges = pd.read_csv('./random/graph_structure.csv')
-        properties = pd.read_pickle('./random/sequential_samples.pkl')
+        self.dir_name = dir_name
+        edges = pd.read_csv('./' + self.dir_name + '/graph_structure.csv')
+        properties = pd.read_pickle('./' + self.dir_name + '/sequential_samples.pkl')
         self.graphs = []
         self.labels = []
         self.returns = []

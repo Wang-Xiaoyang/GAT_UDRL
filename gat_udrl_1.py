@@ -35,6 +35,7 @@ Rtg --> encoder --> rtg embedding
 wandb.config.n_nodes = 20
 wandb.config.n_classes = 2
 wandb.config.model = 'GAT_UDRL_1'
+wandb.config.offline_data = 'consumption-first'
 
 wandb.config.n_epoches = 2000
 wandb.config.batch_size = 64
@@ -42,9 +43,10 @@ wandb.config.learning_rate = 0.01
 wandb.config.training_set = 0.8
 # here 3 means [value (1*1), location (x,y) (1*2)]
 wandb.config.in_feats = 3 + wandb.config.n_classes*2 + wandb.config.n_classes
-wandb.config.out_feats_GAT = 8
+# wandb.config.in_feats = 3 + wandb.config.n_classes*2
+wandb.config.out_feats_GAT = 16
 wandb.config.out_feats_rtg_encoder = 16
-wandb.config.num_GAT_heads = 3
+wandb.config.num_GAT_heads = 6
 wandb.config.evaluation_eps = 10
 wandb.config.freeze_reward_encoder = False
 config = wandb.config
@@ -104,6 +106,8 @@ for epoch in range(epochs):
         cur_items = torch.stack(cur_items, dim=1).float()
         batched_graph, labels, returns, cur_items  = batched_graph.to(device), labels.to(device), returns.to(device), cur_items.to(device)
         pred = model(batched_graph, batched_graph.ndata['feat'].float(), returns.float(), cur_items)
+        # remove action information
+        # pred = model(batched_graph, batched_graph.ndata['feat'][:,:-config.n_classes].float(), returns.float(), cur_items)
         loss = F.cross_entropy(pred, labels)
         optimizer.zero_grad()
         loss.backward()
@@ -120,6 +124,7 @@ num_tests = 0
 for batched_graph, labels, returns, cur_items in test_dataloader:
     cur_items = torch.stack(cur_items, dim=1).float()
     batched_graph, labels, returns, cur_items  = batched_graph.to(device), labels.to(device), returns.to(device), cur_items.to(device)
+    # pred = model(batched_graph, batched_graph.ndata['feat'][:,:-config.n_classes].float(), returns.float(), cur_items)
     pred = model(batched_graph, batched_graph.ndata['feat'].float(), returns.float(), cur_items)
     num_correct += (pred.argmax(1) == labels).sum().item()
     num_tests += len(labels)
@@ -132,6 +137,7 @@ num_tests = 0
 for batched_graph, labels, returns, cur_items in train_dataloader:
     cur_items = torch.stack(cur_items, dim=1).float()
     batched_graph, labels, returns, cur_items  = batched_graph.to(device), labels.to(device), returns.to(device), cur_items.to(device)
+    # pred = model(batched_graph, batched_graph.ndata['feat'][:,:-config.n_classes].float(), returns.float(), cur_items)
     pred = model(batched_graph, batched_graph.ndata['feat'].float(), returns.float(), cur_items)
     num_correct += (pred.argmax(1) == labels).sum().item()
     num_tests += len(labels)
@@ -195,3 +201,53 @@ for idx in range(config.evaluation_eps):
         _, r, done, _ = env.step(a)
         reward += r     
     wandb.log({"reference - reward of random agents": reward})
+
+# """
+# Reference result: distance-first agent.
+# """
+# for idx in range(config.evaluation_eps):
+#     done = False
+#     env.reset(n_nodes=[config.n_nodes, config.n_classes], random_seed=idx)
+#     reward = 0
+#     while not done:
+#         dists = np.zeros(2)
+#         for a_i in range(n_actions):
+#             dist = env.calculate_distance(a_i)
+#             dists[a_i] = dist
+#         a_h = dists.argmin()
+#         # check if this action is valid
+#         if env.if_action_valid(a_h) == True:
+#             a = a_h
+#         else:
+#             # to improve here
+#             a = env.action_space.sample()
+#         _, r, done, _ = env.step(a)
+#         reward += r 
+#     wandb.log({"reference reward - distance-first agents": reward})
+
+"""
+Reference result: distance-first agent.
+"""
+for idx in range(config.evaluation_eps):
+    done = False
+    env.reset(n_nodes=[config.n_nodes, config.n_classes], random_seed=idx)
+    reward = 0
+    while not done:
+        consumptions = np.zeros(2)
+        for a_i in range(n_actions):
+            adj_mat = env.adjacency_mat.copy()
+            consumption_before = env.capacity_consumption(adj_mat)
+            adj_mat[env.cur_item, a_i] = 1
+            consumption_after = env.capacity_consumption(adj_mat)
+            consumption = consumption_after - consumption_before
+            consumptions[a_i] = consumption
+        a_h = consumptions.argmin()
+        # check if this action is valid
+        if env.if_action_valid(a_h) == True:
+            a = a_h
+        else:
+            # to improve here
+            a = env.action_space.sample()
+        _, r, done, _ = env.step(a)
+        reward += r 
+    wandb.log({"reference reward - consumption-first agents": reward})

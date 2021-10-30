@@ -23,6 +23,7 @@ wandb.init(entity="xiaoyang",
 wandb.config.n_nodes = 20
 wandb.config.n_classes = 2
 wandb.config.model = 'GAT_UDRL_2'
+wandb.config.offline_data = 'random'
 
 wandb.config.n_epoches = 5000
 wandb.config.batch_size = 64
@@ -107,6 +108,18 @@ for batched_graph, labels, returns, cur_items in test_dataloader:
     num_tests += len(labels)
 
 wandb.log({"test accuracy": num_correct / num_tests})
+
+# the accuracy on training set?
+num_correct = 0
+num_tests = 0
+for batched_graph, labels, returns, cur_items in train_dataloader:
+    cur_items = torch.stack(cur_items, dim=1).float()
+    batched_graph, labels, returns, cur_items  = batched_graph.to(device), labels.to(device), returns.to(device), cur_items.to(device)
+    pred = model(batched_graph, batched_graph.ndata['feat_with_returns'].float(), returns.float(), cur_items)
+    num_correct += (pred.argmax(1) == labels).sum().item()
+    num_tests += len(labels)
+
+wandb.log({"accuracy on training set": num_correct / num_tests})
 
 """
 model evaluation on env

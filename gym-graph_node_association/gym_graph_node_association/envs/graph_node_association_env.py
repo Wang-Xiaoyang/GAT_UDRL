@@ -81,6 +81,22 @@ class GraphAssociationEnv(gym.Env):
         
         return self.adjacency_mat, r, done, {}
 
+    def if_action_valid(self, a):
+        """
+        Check if the chosen action is a valid one.
+        """
+        is_valid = True
+        if sum(self.adjacency_mat[:, a]) >= self.load_capacity:
+            is_valid = False
+            return is_valid
+        
+        items_total = np.dot(self.fea, self.adjacency_mat[:,a])
+        if items_total + self.fea[self.cur_item] > self.C:
+            is_valid = False
+            return is_valid
+
+        return is_valid
+        
     def calculate_distance(self, a):
         x_1, x_2 = self.nodes_x[self.cur_item], self.nodes_x[self.n_nodes[0]+a]
         y_1, y_2 = self.nodes_y[self.cur_item], self.nodes_y[self.n_nodes[0]+a]
