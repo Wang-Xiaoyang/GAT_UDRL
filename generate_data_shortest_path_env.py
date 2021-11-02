@@ -8,6 +8,7 @@ from easydict import EasyDict as edict
 import pandas as pd
 import csv
 import random
+from itertools import groupby
 
 import dgl
 import torch
@@ -24,7 +25,7 @@ data_config = edict({'N_Graphs': 1000,
 # N_steps is the max_steps for random walk.
 env_config = edict({'N_Nodes': 20,
                  'N_Steps': 10,
-                 'Edge_Sparsity': 0.10
+                 'Edge_Sparsity': 0.2
                  })
 
 env = gym.make('gym_graph_shortest_path:graph_shortest_path-v0')
@@ -32,8 +33,104 @@ n_actions = env.action_space.n
 env.reset(n_nodes = env_config.N_Nodes, 
             edge_sparsity = env_config.Edge_Sparsity, max_steps = env_config.N_Steps, random_seed = None)
 
+# """
+# Dataset 1: Random Walk on undirectional graph
+# """
+# # i. number of nodes; src nodes and dst nodes - generate a complete graph
+# n_nodes = env_config.N_Nodes
+
+# # ii. node features, actions, reward-to-go
+# data_pd = pd.DataFrame()
+# dataset_random = {'feats': [None],
+#                     'cur_node_one_hot': [None],
+#                     'labels': [None],
+#                     'returns': [None],}
+
+# graph_structure_pd = pd.DataFrame()
+# graph_structure = {'num_nodes': None,
+#                     'src_nodes': None,
+#                     'dst_nodes': None,
+#                   }
+
+# reach_goal = 0
+
+# t_0 = time.time()
+# for idx in range(data_config.N_Graphs):
+#     done = False
+#     env.reset(n_nodes = env_config.N_Nodes, 
+#             edge_sparsity = env_config.Edge_Sparsity, max_steps = env_config.N_Steps, random_seed = None)
+
+#     graph_structure = {'num_nodes':n_nodes,
+#                     'src_nodes': env.src,
+#                     'dst_nodes': env.dst,
+#                   }
+#     graph_structure_pd = graph_structure_pd.append(graph_structure, ignore_index=True)
+
+#     nx_G = env.g.to_networkx().to_undirected()
+#     # Kamada-Kawaii layout usually looks pretty for arbitrary graphs
+#     pos = nx.kamada_kawai_layout(nx_G)
+#     nx.draw(nx_G, pos, with_labels=True, node_color=[[.7, .7, .7]])
+    
+#     # ndata in graph
+#     feats = np.array(list(range(n_nodes))) / n_nodes # normalized to 1
+#     feats = np.expand_dims(feats, axis=1)
+#     nodes_actions = np.zeros((n_nodes, env.action_space.n))
+#     feats_with_actions = []
+#     actions = []
+#     rewards = []
+#     cur_nodes = []
+#     while not done:
+#         feats_with_actions.append(np.concatenate((feats, nodes_actions), axis=1))
+#         # a one-hot vector representing the current node, corresponding with labels
+#         current_node = np.zeros(env.n_nodes)
+#         current_node[env.ob] = 1
+#         # random walk
+#         a_list = env.get_neighbor_nodes(env.ob)
+#         # if there are other choices, avoid staying at current node
+#         if len(a_list) > 1:
+#             a_list.remove(env.ob)
+#         a = random.choice(a_list)
+#         # encode the action taken
+#         nodes_actions[env.ob, a] = 1 
+#         _, r, done, _ = env.step(a)
+#         if r == 0:
+#             reach_goal += 1  
+#         actions.append(a)
+#         rewards.append(r)
+#         cur_nodes.append(list(current_node))
+#     returns = reward_to_go(rewards)
+#     dataset_random['feats'] = feats_with_actions
+#     dataset_random['cur_node_one_hot'] = cur_nodes
+#     dataset_random['labels'] = actions
+#     dataset_random['returns'] = returns
+#     data_pd = data_pd.append(dataset_random, ignore_index=True)
+
+# # save dataset
+# data_pd.to_pickle('./shortest_path/random_walk/sequential_samples.pkl')
+# graph_structure_pd.to_pickle('./shortest_path/random_walk/graph_structure.pkl')
+# print('Time to generate %d samples is %f' % (data_config.N_Graphs, time.time()-t_0))
+# print('Random walk reaches the goal in %d / %d graphs' % (reach_goal, data_config.N_Graphs))
+
+def bfs_shortest_path(start, goal):
+    queue = [[start]]
+    explored = []
+    if start ==goal:
+        return 1, start
+    while queue:
+        path = queue.pop(0)
+        node = path[-1]
+        if node not in explored:
+            explored.append(node)
+            for neighbor in env.get_neighbor_nodes(node):
+                new_path = list(path)
+                new_path.append(neighbor)
+                if neighbor == goal:
+                    return 1, new_path
+                queue.append(new_path)
+    return 0, new_path
+
 """
-Dataset 1: Random Walk on undirectional graph
+Dataset 2: Breadth First Search (BFS) on undirectional graph
 """
 # i. number of nodes; src nodes and dst nodes - generate a complete graph
 n_nodes = env_config.N_Nodes
@@ -52,6 +149,8 @@ graph_structure = {'num_nodes': None,
                   }
 
 reach_goal = 0
+# values = 0
+# len_bfs = 0
 
 t_0 = time.time()
 for idx in range(data_config.N_Graphs):
@@ -65,11 +164,6 @@ for idx in range(data_config.N_Graphs):
                   }
     graph_structure_pd = graph_structure_pd.append(graph_structure, ignore_index=True)
 
-    nx_G = env.g.to_networkx().to_undirected()
-    # Kamada-Kawaii layout usually looks pretty for arbitrary graphs
-    pos = nx.kamada_kawai_layout(nx_G)
-    nx.draw(nx_G, pos, with_labels=True, node_color=[[.7, .7, .7]])
-    
     # ndata in graph
     feats = np.array(list(range(n_nodes))) / n_nodes # normalized to 1
     feats = np.expand_dims(feats, axis=1)
@@ -78,17 +172,20 @@ for idx in range(data_config.N_Graphs):
     actions = []
     rewards = []
     cur_nodes = []
+    # get actions
+    _, actions_bfs = bfs_shortest_path(env.start_idx, env.goal_idx)
+    actions_bfs = actions_bfs[1:]
     while not done:
         feats_with_actions.append(np.concatenate((feats, nodes_actions), axis=1))
         # a one-hot vector representing the current node, corresponding with labels
         current_node = np.zeros(env.n_nodes)
         current_node[env.ob] = 1
-        # random walk
-        a_list = env.get_neighbor_nodes(env.ob)
-        # if there are other choices, avoid staying at current node
-        if len(a_list) > 1:
-            a_list.remove(env.ob)
-        a = random.choice(a_list)
+        # fetch actions
+        if len(actions_bfs) == 0:
+            a = env.ob
+        else:
+            a = actions_bfs[0]
+            actions_bfs.pop(0)
         # encode the action taken
         nodes_actions[env.ob, a] = 1 
         _, r, done, _ = env.step(a)
@@ -105,7 +202,9 @@ for idx in range(data_config.N_Graphs):
     data_pd = data_pd.append(dataset_random, ignore_index=True)
 
 # save dataset
-data_pd.to_pickle('./shortest_path/random_walk/sequential_samples.pkl')
-graph_structure_pd.to_pickle('./shortest_path/random_walk/graph_structure.pkl')
+data_pd.to_pickle('./shortest_path/bfs/sequential_samples.pkl')
+graph_structure_pd.to_pickle('./shortest_path/bfs/graph_structure.pkl')
 print('Time to generate %d samples is %f' % (data_config.N_Graphs, time.time()-t_0))
-print('Random walk reaches the goal in %d / %d graphs' % (reach_goal, data_config.N_Graphs))
+print('BFS reaches the goal in %d / %d graphs within %d steps in the env' % (reach_goal, data_config.N_Graphs, env_config.N_Steps))
+# print('BFS reaches the goal in %d graphs' % values)
+# print('average length for BFS (reach the goal or not) is %f' % (len_bfs / data_config.N_Graphs))

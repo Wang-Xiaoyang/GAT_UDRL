@@ -36,14 +36,14 @@ wandb.config.n_classes = 20
 wandb.config.model = 'GAT_UDRL_1'
 wandb.config.offline_data = 'shortest-path-random-walk'
 
-wandb.config.n_epoches = 4000
+wandb.config.n_epoches = 2000
 wandb.config.batch_size = 64
 wandb.config.learning_rate = 0.01
 wandb.config.training_set = 0.8
 wandb.config.in_feats = 1 + wandb.config.n_classes
 wandb.config.out_feats_GAT = 16
-wandb.config.out_feats_rtg_encoder = 16
-wandb.config.num_GAT_heads = 6
+wandb.config.out_feats_rtg_encoder = 32
+wandb.config.num_GAT_heads = 3
 wandb.config.evaluation_eps = 100
 wandb.config.freeze_reward_encoder = False
 config = wandb.config
@@ -95,25 +95,31 @@ wandb.watch(model)
 
 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[500, 1000, 2000, 3000], gamma=0.5)
 
-for epoch in range(epochs):
-    losses = 0
-    num_batches = 0
-    for batched_graph, labels, returns, cur_items in train_dataloader:
-        # cur_items = torch.FloatTensor(cur_items)
-        cur_items = torch.stack(cur_items, dim=1).float()
-        batched_graph, labels, returns, cur_items  = batched_graph.to(device), labels.to(device), returns.to(device), cur_items.to(device)
-        pred = model(batched_graph, batched_graph.ndata['feat'].float(), returns.float(), cur_items)
-        # remove action information
-        # pred = model(batched_graph, batched_graph.ndata['feat'][:,:-config.n_classes].float(), returns.float(), cur_items)
-        loss = F.cross_entropy(pred, labels)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        losses += loss
-        num_batches += 1
+# for epoch in range(epochs):
+#     losses = 0
+#     num_batches = 0
+#     for batched_graph, labels, returns, cur_items in train_dataloader:
+#         # cur_items = torch.FloatTensor(cur_items)
+#         cur_items = torch.stack(cur_items, dim=1).float()
+#         batched_graph, labels, returns, cur_items  = batched_graph.to(device), labels.to(device), returns.to(device), cur_items.to(device)
+#         pred = model(batched_graph, batched_graph.ndata['feat'].float(), returns.float(), cur_items)
+#         # remove action information
+#         # pred = model(batched_graph, batched_graph.ndata['feat'][:,:-config.n_classes].float(), returns.float(), cur_items)
+#         loss = F.cross_entropy(pred, labels)
+#         optimizer.zero_grad()
+#         loss.backward()
+#         optimizer.step()
+#         losses += loss
+#         num_batches += 1
     
-    wandb.log({"average loss in epoches": losses/num_batches})
-    scheduler.step()    
+#     wandb.log({"average loss in epoches": losses/num_batches})
+#     scheduler.step()  
+
+# # save model
+# PATH = './model_shortest_path/model_' + wandb.run.name + '.pt'
+PATH = './model_shortest_path/model_bewitched-cat-35.pt'
+# torch.save(model.state_dict(), PATH)  
+model.load_state_dict(torch.load(PATH))
 
 # accuracy of trained model
 num_correct = 0
@@ -219,4 +225,4 @@ for idx in range(config.evaluation_eps):
         nodes_actions[env.ob, a] = 1 
         _, r, done, _ = env.step(a)
         reward += r 
-    wandb.log({"reference reward - consumption-first agents": reward})
+    wandb.log({"reference reward - random-walk agents": reward})
