@@ -21,6 +21,7 @@ class GraphShortestPathEnv(gym.Env):
         self.n_nodes = 20
         self.edge_sparsity = 0.1
         self.max_steps = 10
+        self.r_min = -1 * self.max_steps
         # start idx and goal idx
         self.start_idx = 0
         self.goal_idx = self.n_nodes - 1
@@ -34,12 +35,13 @@ class GraphShortestPathEnv(gym.Env):
         dst_complete = [item[1] for item in c_edges]
         n_edges = int(np.ceil(len(src_complete) * self.edge_sparsity))
         # generate random edges with the edge_sparsity
-        idx = np.random.randint(0, len(src_complete), n_edges)
+        idx = np.random.choice(len(src_complete), n_edges, replace=False)
         self.src = [src_complete[i] for i in idx]
         self.dst = [dst_complete[i] for i in idx]
 
         # buidl graph
         self.g = dgl.graph((self.src, self.dst), num_nodes=self.n_nodes)
+        self.g = dgl.to_bidirected(self.g)
         self.g = dgl.add_self_loop(self.g)
 
         # Define action and observation space
@@ -82,7 +84,9 @@ class GraphShortestPathEnv(gym.Env):
         self.n_nodes = n_nodes
         self.edge_sparsity = edge_sparsity
         self.max_steps = max_steps
-        self.goal_idx = self.n_nodes - 1
+        self.r_min = -1 * self.max_steps
+        self.goal_idx, self.start_idx = np.random.choice(self.n_nodes, 2, replace=False)
+        # self.goal_idx = self.n_nodes - 1
 
         c_graph = nx.complete_graph(self.n_nodes)
         c_edges = list(c_graph.edges)
@@ -94,12 +98,13 @@ class GraphShortestPathEnv(gym.Env):
             np.random.seed(random_seed)
         else:
             np.random.seed()
-        idx = np.random.randint(0, len(src_complete), n_edges)
+        idx = np.random.choice(len(src_complete), n_edges, replace=False)
         self.src = [src_complete[i] for i in idx]
         self.dst = [dst_complete[i] for i in idx]
 
         # build graph
         self.g = dgl.graph((self.src, self.dst), num_nodes=self.n_nodes)
+        self.g = dgl.to_bidirected(self.g)
         self.g = dgl.add_self_loop(self.g)
 
         self.ob = self.start_idx

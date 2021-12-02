@@ -12,7 +12,8 @@ import numpy as np
 
 # graph shortest path env
 
-dir_name = 'shortest_path/random_walk'
+# dir_name = 'shortest_path/random_walk'
+dir_name = 'shortest_path/bfs'
 
 """
 Data loader for GAT_UDRL_1 model.
@@ -43,6 +44,7 @@ class GAT_Dataset_1(DGLDataset):
             assert len(feats_multi) == len(labels_multi)
             for j in range(len(labels_multi)):
                 g = dgl.graph((src, dst), num_nodes=num_nodes)
+                g = dgl.to_bidirected(self.g)
                 g = dgl.add_self_loop(g)
                 g.ndata['feat'] = torch.from_numpy(feats_multi[j])
                 self.graphs.append(g)
@@ -69,35 +71,37 @@ class GAT_Dataset_2(DGLDataset):
 
     def process(self):
         self.dir_name = dir_name
-        edges = pd.read_csv('./' + self.dir_name + '/graph_structure.csv')
+        edges = pd.read_pickle('./' + self.dir_name + '/graph_structure.pkl')
         properties = pd.read_pickle('./' + self.dir_name + '/sequential_samples.pkl')
         self.graphs = []
         self.labels = []
         self.returns = []
         self.cur_items = []
 
-        num_nodes = edges['num_nodes'][0]
-        src = eval(edges['src_nodes'][0])
-        dst = eval(edges['dst_nodes'][0])
         for i in range(len(properties)):
+            num_nodes = edges['num_nodes'][i]
+            src = edges['src_nodes'][i]
+            dst = edges['dst_nodes'][i]
             cur_row = properties.loc[i]
             feats_multi, cur_nodes_multi = cur_row['feats'], cur_row['cur_node_one_hot']
             assert len(feats_multi) == len(cur_nodes_multi)
             labels_multi, returns_multi = cur_row['labels'], cur_row['returns']
             assert len(labels_multi) == len(returns_multi)
             assert len(feats_multi) == len(labels_multi)
+
+            returns_so_far = -1 * np.ones(int(num_nodes))
             for j in range(len(labels_multi)):
                 g = dgl.graph((src, dst), num_nodes=num_nodes)
+                # important: generate bidirected graph
+                g = dgl.to_bidirected(g)
                 g = dgl.add_self_loop(g)
                 g.ndata['feat'] = torch.from_numpy(feats_multi[j])
-                returns_so_far = np.zeros(num_nodes)
-                returns_so_far[0:j+1] = returns_multi[0:j+1].copy()
-                returns_so_far = returns_so_far / 10 # scaling
+                returns_so_far[cur_nodes_multi[j].index(1)] = returns_multi[j] / 10 # scaling
                 feats_with_returns = torch.from_numpy(np.concatenate((feats_multi[j], np.expand_dims(returns_so_far, axis=1)), axis=1))
                 g.ndata['feat_with_returns'] = feats_with_returns
                 self.graphs.append(g)
                 self.labels.append(labels_multi[j])
-                self.returns.append(returns_multi[j])
+                self.returns.append(returns_multi[j]) # why need this? 26-11-2021 - when we have seperate head for rtg
                 self.cur_items.append(cur_nodes_multi[j])
 
         # Convert the label list to tensor for saving.
@@ -109,3 +113,23 @@ class GAT_Dataset_2(DGLDataset):
 
     def __len__(self):
         return len(self.graphs)
+
+
+# breadth-first-search
+def bfs_shortest_path(start, goal, env):
+    queue = [[start]]
+    explored = []
+    if start ==goal:
+        return 1, start
+    while queue:
+        path = queue.pop(0)
+        node = path[-1]
+        if node not in explored:
+            explored.append(node)
+            for neighbor in env.get_neighbor_nodes(node):
+                new_path = list(path)
+                new_path.append(neighbor)
+                if neighbor == goal:
+                    return 1, new_path
+                queue.append(new_path)
+    return 0, new_path

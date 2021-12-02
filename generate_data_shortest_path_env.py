@@ -18,6 +18,7 @@ from dgl.nn.pytorch import GraphConv
 import networkx as nx
 import time
 from env_utils import *
+from shortest_path_utils import *
 
 data_config = edict({'N_Graphs': 1000,
                     })
@@ -25,7 +26,7 @@ data_config = edict({'N_Graphs': 1000,
 # N_steps is the max_steps for random walk.
 env_config = edict({'N_Nodes': 20,
                  'N_Steps': 10,
-                 'Edge_Sparsity': 0.2
+                 'Edge_Sparsity': 0.1
                  })
 
 env = gym.make('gym_graph_shortest_path:graph_shortest_path-v0')
@@ -33,9 +34,10 @@ n_actions = env.action_space.n
 env.reset(n_nodes = env_config.N_Nodes, 
             edge_sparsity = env_config.Edge_Sparsity, max_steps = env_config.N_Steps, random_seed = None)
 
-# """
-# Dataset 1: Random Walk on undirectional graph
-# """
+"""
+Dataset 1: Random Walk on undirectional graph
+Not using one-hot representations
+"""
 # # i. number of nodes; src nodes and dst nodes - generate a complete graph
 # n_nodes = env_config.N_Nodes
 
@@ -66,36 +68,42 @@ env.reset(n_nodes = env_config.N_Nodes,
 #                   }
 #     graph_structure_pd = graph_structure_pd.append(graph_structure, ignore_index=True)
 
-#     nx_G = env.g.to_networkx().to_undirected()
-#     # Kamada-Kawaii layout usually looks pretty for arbitrary graphs
-#     pos = nx.kamada_kawai_layout(nx_G)
-#     nx.draw(nx_G, pos, with_labels=True, node_color=[[.7, .7, .7]])
-    
-#     # ndata in graph
+#     # ndata in graph; features (node id): one-hot encoding
 #     feats = np.array(list(range(n_nodes))) / n_nodes # normalized to 1
 #     feats = np.expand_dims(feats, axis=1)
-#     nodes_actions = np.zeros((n_nodes, env.action_space.n))
+#     nodes_actions = -1 * np.ones((n_nodes, 1))
+#     node_goal = np.zeros((n_nodes, 1))
+#     node_goal[env.goal_idx] = 1
+#     node_goal[env.start_idx] = -1
 #     feats_with_actions = []
 #     actions = []
 #     rewards = []
 #     cur_nodes = []
 #     while not done:
-#         feats_with_actions.append(np.concatenate((feats, nodes_actions), axis=1))
-#         # a one-hot vector representing the current node, corresponding with labels
+#         feats_with_actions.append(np.concatenate((feats, node_goal, nodes_actions), axis=1))
+#         # a vector representing the current node, corresponding with labels
 #         current_node = np.zeros(env.n_nodes)
 #         current_node[env.ob] = 1
-#         # random walk
+#         #random walk
 #         a_list = env.get_neighbor_nodes(env.ob)
 #         # if there are other choices, avoid staying at current node
 #         if len(a_list) > 1:
 #             a_list.remove(env.ob)
 #         a = random.choice(a_list)
-#         # encode the action taken
-#         nodes_actions[env.ob, a] = 1 
-#         _, r, done, _ = env.step(a)
-#         if r == 0:
-#             reach_goal += 1  
-#         actions.append(a)
+#         # if agent stays in a node, terminate
+#         if a == env.ob:
+#             done = True
+#             actions.append(a)
+#             # a = a / env.action_space.n # normalisation
+#             # nodes_actions[env.ob] = a
+#             r = env.r_min - sum(rewards) # so that the reward to go is [-10, -9,...]
+#         else:
+#             # encode the action taken; add this action to node state
+#             nodes_actions[env.ob] = a / env.action_space.n
+#             _, r, done, _ = env.step(a)
+#             actions.append(a)
+#             if r == 0:
+#                 reach_goal += 1  
 #         rewards.append(r)
 #         cur_nodes.append(list(current_node))
 #     returns = reward_to_go(rewards)
@@ -109,28 +117,13 @@ env.reset(n_nodes = env_config.N_Nodes,
 # data_pd.to_pickle('./shortest_path/random_walk/sequential_samples.pkl')
 # graph_structure_pd.to_pickle('./shortest_path/random_walk/graph_structure.pkl')
 # print('Time to generate %d samples is %f' % (data_config.N_Graphs, time.time()-t_0))
-# print('Random walk reaches the goal in %d / %d graphs' % (reach_goal, data_config.N_Graphs))
+# print('Random walk reaches the goal in %d / %d graphs within %d steps in the env' % (reach_goal, data_config.N_Graphs, env_config.N_Steps))
 
-def bfs_shortest_path(start, goal):
-    queue = [[start]]
-    explored = []
-    if start ==goal:
-        return 1, start
-    while queue:
-        path = queue.pop(0)
-        node = path[-1]
-        if node not in explored:
-            explored.append(node)
-            for neighbor in env.get_neighbor_nodes(node):
-                new_path = list(path)
-                new_path.append(neighbor)
-                if neighbor == goal:
-                    return 1, new_path
-                queue.append(new_path)
-    return 0, new_path
+
 
 """
 Dataset 2: Breadth First Search (BFS) on undirectional graph
+Not using one-hot representations
 """
 # i. number of nodes; src nodes and dst nodes - generate a complete graph
 n_nodes = env_config.N_Nodes
@@ -164,36 +157,44 @@ for idx in range(data_config.N_Graphs):
                   }
     graph_structure_pd = graph_structure_pd.append(graph_structure, ignore_index=True)
 
-    # ndata in graph
+    # ndata in graph; features (node id): one-hot encoding
     feats = np.array(list(range(n_nodes))) / n_nodes # normalized to 1
     feats = np.expand_dims(feats, axis=1)
-    nodes_actions = np.zeros((n_nodes, env.action_space.n))
+    nodes_actions = -1 * np.ones((n_nodes, 1))
+    node_goal = np.zeros((n_nodes, 1))
+    node_goal[env.goal_idx] = 1
+    node_goal[env.start_idx] = -1
     feats_with_actions = []
     actions = []
     rewards = []
     cur_nodes = []
     # get actions
-    _, actions_bfs = bfs_shortest_path(env.start_idx, env.goal_idx)
+    result_flag, actions_bfs = bfs_shortest_path(env.start_idx, env.goal_idx, env)
     actions_bfs = actions_bfs[1:]
-    while not done:
-        feats_with_actions.append(np.concatenate((feats, nodes_actions), axis=1))
-        # a one-hot vector representing the current node, corresponding with labels
-        current_node = np.zeros(env.n_nodes)
-        current_node[env.ob] = 1
-        # fetch actions
-        if len(actions_bfs) == 0:
-            a = env.ob
-        else:
-            a = actions_bfs[0]
-            actions_bfs.pop(0)
-        # encode the action taken
-        nodes_actions[env.ob, a] = 1 
-        _, r, done, _ = env.step(a)
-        if r == 0:
-            reach_goal += 1  
-        actions.append(a)
-        rewards.append(r)
-        cur_nodes.append(list(current_node))
+    if result_flag == 0:
+        # start node = goal node, skip
+        continue
+    else:
+        while not done:
+            feats_with_actions.append(np.concatenate((feats, node_goal, nodes_actions), axis=1))
+            # a vector representing the current node, corresponding with labels
+            current_node = np.zeros(env.n_nodes)
+            current_node[env.ob] = 1
+            # fetch actions
+            if len(actions_bfs) == 0:
+                a = env.ob
+            else:
+                a = actions_bfs[0]
+                actions_bfs.pop(0)
+            
+            nodes_actions[env.ob] = a / env.action_space.n
+            # encode the action taken
+            _, r, done, _ = env.step(a)
+            actions.append(a)            
+            if r == 0:
+                reach_goal += 1  
+            rewards.append(r)
+            cur_nodes.append(list(current_node))
     returns = reward_to_go(rewards)
     dataset_random['feats'] = feats_with_actions
     dataset_random['cur_node_one_hot'] = cur_nodes
@@ -206,5 +207,3 @@ data_pd.to_pickle('./shortest_path/bfs/sequential_samples.pkl')
 graph_structure_pd.to_pickle('./shortest_path/bfs/graph_structure.pkl')
 print('Time to generate %d samples is %f' % (data_config.N_Graphs, time.time()-t_0))
 print('BFS reaches the goal in %d / %d graphs within %d steps in the env' % (reach_goal, data_config.N_Graphs, env_config.N_Steps))
-# print('BFS reaches the goal in %d graphs' % values)
-# print('average length for BFS (reach the goal or not) is %f' % (len_bfs / data_config.N_Graphs))

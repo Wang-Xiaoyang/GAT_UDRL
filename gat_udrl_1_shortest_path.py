@@ -31,18 +31,25 @@ graph with node features [s, previous actions] --> GAT --> node embedding (for c
                                                                                                + --> prediction layer
 Rtg --> encoder --> rtg embedding
 """
+wandb.config.is_training = False
+# the model name to load
+wandb.config.run_name = 'glowing-celebration-117'
+
 wandb.config.n_nodes = 20
 wandb.config.n_classes = 20
 wandb.config.model = 'GAT_UDRL_1'
-wandb.config.offline_data = 'shortest-path-random-walk'
+wandb.config.offline_data = 'shortest-path-bfs'
+wandb.config.edge_sparsity = 0.2
 
-wandb.config.n_epoches = 2000
+wandb.config.n_epoches = 1000
 wandb.config.batch_size = 64
 wandb.config.learning_rate = 0.01
 wandb.config.training_set = 0.8
-wandb.config.in_feats = 1 + wandb.config.n_classes
+# wandb.config.in_feats = 1 + wandb.config.n_classes
+# wandb.config.in_feats = wandb.config.n_nodes + wandb.config.n_classes + 1 # node index: one-hot encoder; 1 is the goal indicator
+wandb.config.in_feats = 3
 wandb.config.out_feats_GAT = 16
-wandb.config.out_feats_rtg_encoder = 32
+wandb.config.out_feats_rtg_encoder = 20
 wandb.config.num_GAT_heads = 3
 wandb.config.evaluation_eps = 100
 wandb.config.freeze_reward_encoder = False
@@ -93,86 +100,98 @@ if config.freeze_reward_encoder == True:
 
 wandb.watch(model)
 
-scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[500, 1000, 2000, 3000], gamma=0.5)
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[500, 1000, 2000, 3000, 4500], gamma=0.5)
 
-# for epoch in range(epochs):
-#     losses = 0
-#     num_batches = 0
-#     for batched_graph, labels, returns, cur_items in train_dataloader:
-#         # cur_items = torch.FloatTensor(cur_items)
-#         cur_items = torch.stack(cur_items, dim=1).float()
-#         batched_graph, labels, returns, cur_items  = batched_graph.to(device), labels.to(device), returns.to(device), cur_items.to(device)
-#         pred = model(batched_graph, batched_graph.ndata['feat'].float(), returns.float(), cur_items)
-#         # remove action information
-#         # pred = model(batched_graph, batched_graph.ndata['feat'][:,:-config.n_classes].float(), returns.float(), cur_items)
-#         loss = F.cross_entropy(pred, labels)
-#         optimizer.zero_grad()
-#         loss.backward()
-#         optimizer.step()
-#         losses += loss
-#         num_batches += 1
+if config.is_training == True:
+    for epoch in range(epochs):
+        losses = 0
+        num_batches = 0
+        for batched_graph, labels, returns, cur_items in train_dataloader:
+            # cur_items = torch.FloatTensor(cur_items)
+            cur_items = torch.stack(cur_items, dim=1).float()
+            batched_graph, labels, returns, cur_items  = batched_graph.to(device), labels.to(device), returns.to(device), cur_items.to(device)
+            pred = model(batched_graph, batched_graph.ndata['feat'].float(), returns.float(), cur_items)
+            # remove action information
+            # pred = model(batched_graph, batched_graph.ndata['feat'][:,:-config.n_classes].float(), returns.float(), cur_items)
+            loss = F.cross_entropy(pred, labels)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            losses += loss
+            num_batches += 1
+        
+        wandb.log({"average loss in epoches": losses/num_batches})
+        scheduler.step()  
+
+    # # save model
+        PATH = './model_shortest_path/model_' + wandb.run.name + '.pt'
+        torch.save(model.state_dict(), PATH)
+
     
-#     wandb.log({"average loss in epoches": losses/num_batches})
-#     scheduler.step()  
+    # accuracy of trained model
+    num_correct = 0
+    num_tests = 0
+    for batched_graph, labels, returns, cur_items in test_dataloader:
+        cur_items = torch.stack(cur_items, dim=1).float()
+        batched_graph, labels, returns, cur_items  = batched_graph.to(device), labels.to(device), returns.to(device), cur_items.to(device)
+        # pred = model(batched_graph, batched_graph.ndata['feat'][:,:-config.n_classes].float(), returns.float(), cur_items)
+        pred = model(batched_graph, batched_graph.ndata['feat'].float(), returns.float(), cur_items)
+        num_correct += (pred.argmax(1) == labels).sum().item()
+        num_tests += len(labels)
 
-# # save model
-# PATH = './model_shortest_path/model_' + wandb.run.name + '.pt'
-PATH = './model_shortest_path/model_bewitched-cat-35.pt'
-# torch.save(model.state_dict(), PATH)  
-model.load_state_dict(torch.load(PATH))
+    wandb.log({"test accuracy": num_correct / num_tests})
 
-# accuracy of trained model
-num_correct = 0
-num_tests = 0
-for batched_graph, labels, returns, cur_items in test_dataloader:
-    cur_items = torch.stack(cur_items, dim=1).float()
-    batched_graph, labels, returns, cur_items  = batched_graph.to(device), labels.to(device), returns.to(device), cur_items.to(device)
-    # pred = model(batched_graph, batched_graph.ndata['feat'][:,:-config.n_classes].float(), returns.float(), cur_items)
-    pred = model(batched_graph, batched_graph.ndata['feat'].float(), returns.float(), cur_items)
-    num_correct += (pred.argmax(1) == labels).sum().item()
-    num_tests += len(labels)
+    # the accuracy on training set?
+    num_correct = 0
+    num_tests = 0
+    for batched_graph, labels, returns, cur_items in train_dataloader:
+        cur_items = torch.stack(cur_items, dim=1).float()
+        batched_graph, labels, returns, cur_items  = batched_graph.to(device), labels.to(device), returns.to(device), cur_items.to(device)
+        # pred = model(batched_graph, batched_graph.ndata['feat'][:,:-config.n_classes].float(), returns.float(), cur_items)
+        pred = model(batched_graph, batched_graph.ndata['feat'].float(), returns.float(), cur_items)
+        num_correct += (pred.argmax(1) == labels).sum().item()
+        num_tests += len(labels)
 
-wandb.log({"test accuracy": num_correct / num_tests})
+    wandb.log({"accuracy on training set": num_correct / num_tests})
+    print('-------------------Model training finished.-------------------')
 
-# the accuracy on training set?
-num_correct = 0
-num_tests = 0
-for batched_graph, labels, returns, cur_items in train_dataloader:
-    cur_items = torch.stack(cur_items, dim=1).float()
-    batched_graph, labels, returns, cur_items  = batched_graph.to(device), labels.to(device), returns.to(device), cur_items.to(device)
-    # pred = model(batched_graph, batched_graph.ndata['feat'][:,:-config.n_classes].float(), returns.float(), cur_items)
-    pred = model(batched_graph, batched_graph.ndata['feat'].float(), returns.float(), cur_items)
-    num_correct += (pred.argmax(1) == labels).sum().item()
-    num_tests += len(labels)
 
-wandb.log({"accuracy on training set": num_correct / num_tests})
+else:
+    PATH = './model_shortest_path/model_' + config.run_name + '.pt'  
+    model.load_state_dict(torch.load(PATH))
 
 
 """
 model evaluation on env
 """
-env = gym.make('gym_graph_shortest_path:graph_shortest_path-v0')
-env.reset(n_nodes = config.n_nodes)
-n_actions = env.action_space.n
+# generate seed list
+np.random.seed(5)
+seed_list = np.random.randint(1, high=1e5, size=config.evaluation_eps)
 
-# # graph structure
-# edges = pd.read_pickle('./shortest_path/random_walk/graph_structure.pkl')
+env = gym.make('gym_graph_shortest_path:graph_shortest_path-v0')
+env.reset(n_nodes = config.n_nodes, edge_sparsity=config.edge_sparsity)
+n_actions = env.action_space.n
 
 for idx in range(config.evaluation_eps):
     done = False
     # use known seeds in test time; compare between trained model and random model
-    env.reset(n_nodes = config.n_nodes, random_seed = idx)
+    env.reset(n_nodes = config.n_nodes, edge_sparsity = config.edge_sparsity, random_seed = seed_list[idx])
     # ndata in graph
+    # feats = np.array(list(range(config.n_nodes))) / config.n_nodes # normalized to 1
+    # feats = np.expand_dims(feats, axis=1)
     feats = np.array(list(range(config.n_nodes))) / config.n_nodes # normalized to 1
     feats = np.expand_dims(feats, axis=1)
-    nodes_actions = np.zeros((config.n_nodes, env.action_space.n))
+    nodes_actions = np.zeros((config.n_nodes, 1))
+    node_goal = np.zeros((config.n_nodes, 1))
+    node_goal[env.goal_idx] = 1
+    node_goal[env.start_idx] = -1
     actions = []
     rewards = []
     cur_nodes = []
-    returns = torch.tensor(float(0)).to(device)
+    returns = torch.tensor(float(-2)).to(device)
     total_reward = 0
     while not done:
-        feats_with_actions = np.concatenate((feats, nodes_actions), axis=1)
+        feats_with_actions = np.concatenate((feats, nodes_actions, node_goal), axis=1)
         # a one-hot vector representing the current node, corresponding with labels
         current_node = np.zeros(env.n_nodes)
         current_node[env.ob] = 1
@@ -182,11 +201,11 @@ for idx in range(config.evaluation_eps):
         g = dgl.add_self_loop(g)
         g.ndata['feat'] = torch.from_numpy(feats_with_actions)
         g = g.to(device)
-        pred = model(g, g.ndata['feat'].float().unsqueeze(0), returns.unsqueeze(0), current_node.unsqueeze(0))
+        pred = model(g, g.ndata['feat'].float(), returns.unsqueeze(0), current_node.unsqueeze(0))
         a = pred.argmax().cpu().numpy()
-        # encode the action taken
-        nodes_actions[env.ob, a] = 1 
+        # encode the action taken 
         _, r, done, _ = env.step(a)
+        nodes_actions[env.ob] = a / env.action_space.n
         returns -= r
         total_reward += r
     wandb.log({"evaluation: trained model rewards (each episode)": total_reward})
@@ -196,7 +215,7 @@ Reference result: returns in random agent.
 """
 for idx in range(config.evaluation_eps):
     done = False
-    env.reset(n_nodes = config.n_nodes, random_seed = idx)
+    env.reset(n_nodes = config.n_nodes, edge_sparsity = config.edge_sparsity, random_seed = seed_list[idx])
     reward = 0
     while not done:
         a = env.action_space.sample()
@@ -209,10 +228,7 @@ Reference result: random-walk agent.
 """
 for idx in range(config.evaluation_eps):
     done = False
-    env.reset(n_nodes = config.n_nodes, random_seed = idx)
-    feats = np.array(list(range(config.n_nodes))) / config.n_nodes # normalized to 1
-    feats = np.expand_dims(feats, axis=1)
-    nodes_actions = np.zeros((config.n_nodes, env.action_space.n))
+    env.reset(n_nodes = config.n_nodes, edge_sparsity = config.edge_sparsity, random_seed = seed_list[idx])
     reward = 0
     while not done:
         # random walk
@@ -221,8 +237,28 @@ for idx in range(config.evaluation_eps):
         if len(a_list) > 1:
             a_list.remove(env.ob)
         a = random.choice(a_list)
-        # encode the action taken
-        nodes_actions[env.ob, a] = 1 
         _, r, done, _ = env.step(a)
         reward += r 
     wandb.log({"reference reward - random-walk agents": reward})
+
+"""
+Reference result: breadth-first-search agent.
+"""
+for idx in range(config.evaluation_eps):
+    done = False
+    env.reset(n_nodes = config.n_nodes, edge_sparsity = config.edge_sparsity, random_seed = seed_list[idx])
+    reward = 0
+    # bfs
+    _, actions_bfs = bfs_shortest_path(env.start_idx, env.goal_idx, env)
+    actions_bfs = actions_bfs[1:]
+    while not done:
+        # breadth-first-search
+        if len(actions_bfs) == 0:
+            a = env.ob
+        else:
+            a = actions_bfs[0]
+            actions_bfs.pop(0)
+            
+        _, r, done, _ = env.step(a)
+        reward += r 
+    wandb.log({"reference reward - breadth-first-search agents": reward})
