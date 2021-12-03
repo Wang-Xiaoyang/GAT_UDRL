@@ -191,7 +191,7 @@ for idx in range(data_config.N_Graphs):
             # encode the action taken
             _, r, done, _ = env.step(a)
             actions.append(a)            
-            if r == 0:
+            if r == 1:
                 reach_goal += 1  
             rewards.append(r)
             cur_nodes.append(list(current_node))

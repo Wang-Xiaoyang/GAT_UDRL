@@ -4,7 +4,9 @@ from gym import error, spaces, utils
 from gym.utils import seeding
 import networkx as nx
 import dgl
+from networkx.linalg.graphmatrix import adjacency_matrix
 import torch
+import scipy.sparse as spp
 
 import math
 import numpy as np
@@ -28,19 +30,34 @@ class GraphShortestPathEnv(gym.Env):
         
         # p(s0) - featuers of type 0 nodes - in each episode, randomly sample form a Gaussian distribution
         # simulation of user mobility in this area
-        np.random.seed()
-        c_graph = nx.complete_graph(self.n_nodes)
-        c_edges = list(c_graph.edges)
-        src_complete = [item[0] for item in c_edges]
-        dst_complete = [item[1] for item in c_edges]
-        n_edges = int(np.ceil(len(src_complete) * self.edge_sparsity))
-        # generate random edges with the edge_sparsity
-        idx = np.random.choice(len(src_complete), n_edges, replace=False)
-        self.src = [src_complete[i] for i in idx]
-        self.dst = [dst_complete[i] for i in idx]
 
-        # buidl graph
-        self.g = dgl.graph((self.src, self.dst), num_nodes=self.n_nodes)
+        # # generate random edges with the edge_sparsity
+        # # 1. random selection from complete graph
+        # np.random.seed()
+        # c_graph = nx.complete_graph(self.n_nodes)
+        # c_edges = list(c_graph.edges)
+        # src_complete = [item[0] for item in c_edges]
+        # dst_complete = [item[1] for item in c_edges]
+        # n_edges = int(np.ceil(len(src_complete) * self.edge_sparsity))
+        # idx = np.random.choice(len(src_complete), n_edges, replace=False)
+        # self.src = [src_complete[i] for i in idx]
+        # self.dst = [dst_complete[i] for i in idx]
+        # # buidl graph
+        # self.g = dgl.graph((self.src, self.dst), num_nodes=self.n_nodes)
+        # self.g = dgl.to_bidirected(self.g)
+        # self.g = dgl.add_self_loop(self.g)
+
+        # 2. guarantee edges for each node; make the goal more reachable
+        adjacency_mat = np.zeros((self.n_nodes, self.n_nodes))
+        ave_edges_per_node = np.ceil(self.n_nodes * self.edge_sparsity)
+        for i in range(adjacency_mat.shape[0]-1):
+            while sum(adjacency_mat[i,:]) < ave_edges_per_node:
+                idx = np.random.randint(i+1, self.n_nodes, 1)
+                adjacency_mat[i, idx] = 1
+                adjacency_mat[idx, i] = 1 # bi-directional
+        assert sum(sum(adjacency_mat)) >= np.ceil(self.n_nodes * self.edge_sparsity)
+        adj = spp.coo_matrix(adjacency_mat)
+        self.g = dgl.from_scipy(adj)
         self.g = dgl.to_bidirected(self.g)
         self.g = dgl.add_self_loop(self.g)
 
@@ -63,10 +80,10 @@ class GraphShortestPathEnv(gym.Env):
         
         if self.ob == self.goal_idx:
             done = True
-            r = 0
+            r = 1
             return self.ob, r, done, {}
         else:
-            r = -1
+            r = 0
 
         self.step_count += 1
         if self.step_count >= self.max_steps:

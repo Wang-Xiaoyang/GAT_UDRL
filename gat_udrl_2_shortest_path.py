@@ -207,7 +207,7 @@ for idx in range(config.evaluation_eps):
     actions = []
     rewards = []
     cur_nodes = []
-    returns = -1.0
+    returns = 1.0
     # returns = reward_list_bfs[idx] #bfs guided search
     returns_all = np.zeros(int(config.n_nodes))
     total_reward = 0
