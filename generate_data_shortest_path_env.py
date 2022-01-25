@@ -130,7 +130,7 @@ n_nodes = env_config.N_Nodes
 
 # ii. node features, actions, reward-to-go
 data_pd = pd.DataFrame()
-dataset_random = {'feats': [None],
+dataset_bfs = {'feats': [None],
                     'cur_node_one_hot': [None],
                     'labels': [None],
                     'returns': [None],}
@@ -196,11 +196,12 @@ for idx in range(data_config.N_Graphs):
             rewards.append(r)
             cur_nodes.append(list(current_node))
     returns = reward_to_go(rewards)
-    dataset_random['feats'] = feats_with_actions
-    dataset_random['cur_node_one_hot'] = cur_nodes
-    dataset_random['labels'] = actions
-    dataset_random['returns'] = returns
-    data_pd = data_pd.append(dataset_random, ignore_index=True)
+    if r == 1:
+        dataset_bfs['feats'] = feats_with_actions
+        dataset_bfs['cur_node_one_hot'] = cur_nodes
+        dataset_bfs['labels'] = actions
+        dataset_bfs['returns'] = returns
+        data_pd = data_pd.append(dataset_bfs, ignore_index=True)
 
 # save dataset
 data_pd.to_pickle('./shortest_path/bfs/sequential_samples.pkl')

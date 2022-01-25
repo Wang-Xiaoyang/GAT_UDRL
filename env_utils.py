@@ -44,3 +44,21 @@ def reward_to_go(rewards, gamma=1.0):
         r = returns[i] + gamma * returns[i+1]
         returns[i] = r
     return returns
+
+# BERT UDRL
+# node features: [node feature, x, y (location)]
+def get_state_from_env(env):
+    n_nodes = env.n_nodes[0]
+    # value
+    nodes_type_0_v = np.transpose(env.fea.copy())
+    nodes_v = np.expand_dims(nodes_type_0_v, axis=1)
+    # location
+    nodes_x, nodes_y = env.nodes_x[0:n_nodes], env.nodes_y[0:n_nodes]
+    nodes_fea = np.concatenate((nodes_v, nodes_x, nodes_y), axis=1)
+    # add feature: location of type 1 nodes
+    nodes_x_1, nodes_y_1 = env.nodes_x[n_nodes:], env.nodes_y[n_nodes:]
+    nodes_x_1 = np.repeat(nodes_x_1.transpose(), n_nodes, axis=0)
+    nodes_y_1 = np.repeat(nodes_y_1.transpose(), n_nodes, axis=0)
+    nodes_fea = np.concatenate((nodes_fea, nodes_x_1, nodes_y_1), axis=1)
+    nodes_fea = nodes_fea / 10
+    return nodes_fea

@@ -89,7 +89,7 @@ n_actions = env.action_space.n
 # print('Time to generate %d samples is %f' % (data_config.N_Episodes, time.time()-t_0))
 
 # """
-# Dataset 2: Choose first the type 1 node with the smallest distance.
+# Dataset 2: Choose first the type 1 node with the shortest distance.
 # distance-first
 # """
 # # i. number of nodes; src nodes and dst nodes - generate a complete graph
