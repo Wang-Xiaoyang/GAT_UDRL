@@ -45,7 +45,7 @@ wandb.config.batch_size = 16
 wandb.config.learning_rate = 0.001
 wandb.config.training_set = 0.8
 # here 3 means [value (1*1), location (x,y) (1*2)]
-wandb.config.in_feats = 3 + wandb.config.n_classes*2
+wandb.config.in_feats = 3 + wandb.config.n_classes*2 + wandb.config.n_classes * 1
 
 # BERT parameters
 wandb.config.maxlen = 10 # the max token length (max length for trajectories)
@@ -117,7 +117,6 @@ test_dataloader = Data.DataLoader(
     drop_last=False)
 
 # model and training
-
 model = BERT(config, vocab_size).to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adadelta(model.parameters(), lr=0.001)

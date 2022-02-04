@@ -46,23 +46,25 @@ if dataset_type == 'random':
         done = False
         env.reset(n_nodes=[env_config.N_RUs, env_config.N_DUs])
         # states
-        feats = get_state_from_env(env)
         actions = []
         rewards = []
         cur_nodes = []
+        feats = get_state_from_env(env, [])
         while not done:
+            feats = get_state_from_env(env, feats)
             # feats_with_actions.append(np.concatenate((feats, nodes_actions), axis=1))
             # a one-hot vector representing the current node, corresponding with labels
             current_node = np.zeros(env.n_nodes[0])
             current_node[env.cur_item] = 1
 
             a = env.action_space.sample()            
-            _, r, done, _ = env.step(a)     
+            _, r, done, _ = env.step(a)   
             actions.append(a)
             rewards.append(r)
             cur_nodes.append(list(current_node))
+
         returns = reward_to_go(rewards)
-        dataset_random['feats'] = feats
+        dataset_random['feats'] = feats / 10
         dataset_random['cur_node_one_hot'] = cur_nodes
         dataset_random['labels'] = actions
         dataset_random['returns'] = returns
@@ -94,11 +96,12 @@ if dataset_type == 'distance-first':
         done = False
         env.reset(n_nodes=[env_config.N_RUs, env_config.N_DUs])
         # states
-        feats = get_state_from_env(env)
+        feats = get_state_from_env(env, [])
         actions = []
         rewards = []
         cur_nodes = []
         while not done:
+            feats = get_state_from_env(env, feats)
             # a one-hot vector representing the current node, corresponding with labels
             current_node = np.zeros(env.n_nodes[0])
             current_node[env.cur_item] = 1
@@ -114,12 +117,13 @@ if dataset_type == 'distance-first':
                 # to improve here
                 a = env.action_space.sample() 
 
-            _, r, done, _ = env.step(a)     
+            _, r, done, _ = env.step(a)    
             actions.append(a)
             rewards.append(r)
             cur_nodes.append(list(current_node))
+
         returns = reward_to_go(rewards)
-        dataset_random['feats'] = feats
+        dataset_random['feats'] = feats / 10
         dataset_random['cur_node_one_hot'] = cur_nodes
         dataset_random['labels'] = actions
         dataset_random['returns'] = returns
@@ -151,11 +155,12 @@ if dataset_type == 'consumption-first':
         done = False
         env.reset(n_nodes=[env_config.N_RUs, env_config.N_DUs])
         # states
-        feats = get_state_from_env(env)
+        feats = get_state_from_env(env, [])
         actions = []
         rewards = []
         cur_nodes = []
         while not done:
+            feats = get_state_from_env(env, feats)
             # feats_with_actions.append(np.concatenate((feats, nodes_actions), axis=1))
             # a one-hot vector representing the current node, corresponding with labels
             current_node = np.zeros(env.n_nodes[0])
@@ -176,12 +181,13 @@ if dataset_type == 'consumption-first':
                 # to improve here
                 a = env.action_space.sample()
 
-            _, r, done, _ = env.step(a)     
+            _, r, done, _ = env.step(a)  
             actions.append(a)
             rewards.append(r)
             cur_nodes.append(list(current_node))
+
         returns = reward_to_go(rewards)
-        dataset_random['feats'] = feats
+        dataset_random['feats'] = feats / 10   # normalize
         dataset_random['cur_node_one_hot'] = cur_nodes
         dataset_random['labels'] = actions
         dataset_random['returns'] = returns
