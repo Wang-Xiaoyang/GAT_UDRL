@@ -68,5 +68,5 @@ def get_state_from_env(env, nodes_fea):
         remaining_capacity = np.zeros([n_nodes, env.n_nodes[1]])
         nodes_fea = np.concatenate((nodes_fea, remaining_capacity), axis=1)       
     else: # during an episode
-        nodes_fea[env.cur_item,-2:] = env.remaining_capacity / env.C * 10 # for later normalizetion = /10
+        nodes_fea[env.cur_item,-env.n_nodes[1]:] = env.remaining_capacity / env.C * 10 # for later normalizetion = /10
     return nodes_fea
